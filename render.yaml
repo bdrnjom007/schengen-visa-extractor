@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: schengen-visa-api
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: schengen-visa-db
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        value: us-east-1
+
+databases:
+  - name: schengen-visa-db
+    databaseName: schengen_visa
+    user: schengen_user

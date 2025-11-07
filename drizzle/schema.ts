@@ -1,17 +1,23 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean } from "drizzle-orm/mysql-core";
+import { serial, text, timestamp, varchar, boolean, pgTable, pgEnum } from "drizzle-orm/pg-core";
+
+/**
+ * Enums
+ */
+export const roleEnum = pgEnum("role", ["user", "admin"]);
+export const statusEnum = pgEnum("status", ["draft", "completed", "submitted"]);
 
 /**
  * Core user table backing auth flow.
  */
-export const users = mysqlTable("users", {
-  id: int("id").autoincrement().primaryKey(),
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: roleEnum("role").default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
@@ -21,9 +27,9 @@ export type InsertUser = typeof users.$inferInsert;
 /**
  * Visa applications table - stores extracted data from documents
  */
-export const visaApplications = mysqlTable("visa_applications", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+export const visaApplications = pgTable("visa_applications", {
+  id: serial("id").primaryKey(),
+  userId: serial("userId").notNull(),
   
   // Passport data
   passportNumber: varchar("passportNumber", { length: 50 }),
@@ -81,11 +87,11 @@ export const visaApplications = mysqlTable("visa_applications", {
   addressStreet: varchar("addressStreet", { length: 255 }),
   
   // Status and metadata
-  status: mysqlEnum("status", ["draft", "completed", "submitted"]).default("draft").notNull(),
+  status: statusEnum("status").default("draft").notNull(),
   extractionCompleted: boolean("extractionCompleted").default(false).notNull(),
   
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type VisaApplication = typeof visaApplications.$inferSelect;

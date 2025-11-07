@@ -1,14 +1,16 @@
 import { eq, desc } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, visaApplications, InsertVisaApplication, VisaApplication } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import { InsertUser, users, visaApplications, InsertVisaApplication, VisaApplication } from "../../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _client: ReturnType<typeof postgres> | null = null;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      _client = postgres(process.env.DATABASE_URL);
+      _db = drizzle(_client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -32,7 +34,6 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     const values: InsertUser = {
       openId: user.openId,
     };
-    const updateSet: Record<string, unknown> = {};
 
     const textFields = ["name", "email", "loginMethod"] as const;
     type TextField = (typeof textFields)[number];
@@ -42,33 +43,33 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       if (value === undefined) return;
       const normalized = value ?? null;
       values[field] = normalized;
-      updateSet[field] = normalized;
     };
 
     textFields.forEach(assignNullable);
 
     if (user.lastSignedIn !== undefined) {
       values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
     }
     if (user.role !== undefined) {
       values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
+    } else if (process.env.OWNER_OPEN_ID && user.openId === process.env.OWNER_OPEN_ID) {
       values.role = 'admin';
-      updateSet.role = 'admin';
     }
 
     if (!values.lastSignedIn) {
       values.lastSignedIn = new Date();
     }
 
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
+    // PostgreSQL upsert using onConflictDoUpdate
+    await db.insert(users).values(values).onConflictDoUpdate({
+      target: users.openId,
+      set: {
+        name: values.name,
+        email: values.email,
+        loginMethod: values.loginMethod,
+        role: values.role,
+        lastSignedIn: new Date(),
+      },
     });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
@@ -93,20 +94,15 @@ export async function createVisaApplication(data: InsertVisaApplication): Promis
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const result = await db.insert(visaApplications).values(data);
-  const insertedId = Number(result[0].insertId);
-  
-  const inserted = await db.select().from(visaApplications).where(eq(visaApplications.id, insertedId)).limit(1);
-  return inserted[0];
+  const result = await db.insert(visaApplications).values(data).returning();
+  return result[0];
 }
 
 export async function updateVisaApplication(id: number, data: Partial<InsertVisaApplication>): Promise<VisaApplication | undefined> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  await db.update(visaApplications).set(data).where(eq(visaApplications.id, id));
-  
-  const updated = await db.select().from(visaApplications).where(eq(visaApplications.id, id)).limit(1);
+  const updated = await db.update(visaApplications).set(data).where(eq(visaApplications.id, id)).returning();
   return updated.length > 0 ? updated[0] : undefined;
 }
 
